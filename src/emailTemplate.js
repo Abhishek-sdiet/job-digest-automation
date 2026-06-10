@@ -10,6 +10,7 @@ const { groupBySource } = require("./utils/jobFilter");
 function buildEmailHTML(jobs) {
   const grouped = groupBySource(jobs);
   const today = getTodayFormatted();
+  const generatedAt = getISTTime();
   const totalCount = jobs.length;
 
   const sourceSections = Object.entries(grouped)
@@ -110,7 +111,7 @@ function buildEmailHTML(jobs) {
   <!-- FOOTER -->
   <div class="footer">
     <div class="footer-text">
-      This digest was generated automatically at 7:00 AM IST for <strong>Abhishek Kumar</strong><br/>
+      This digest was generated automatically at ${generatedAt} IST for <strong>Abhishek Kumar</strong><br/>
       Roles: Full Stack • MERN • SDE-1 • Frontend | Locations: Delhi NCR • Remote • Gurugram • Noida<br/>
       <div class="divider"></div>
       Jobs are also backed up to your <a href="#" class="footer-link">Google Sheet</a> •

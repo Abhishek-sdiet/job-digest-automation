@@ -22,7 +22,7 @@ async function scrapeNaukri(roles, locations, lookbackHours) {
 
   for (const term of searchTerms) {
     try {
-      const jobs = await fetchNaukriJobs(term, lookbackHours, seen);
+      const jobs = await fetchNaukriJobs(term, locations, lookbackHours, seen);
       allJobs.push(...jobs);
       await sleep(2500);
     } catch (err) {
@@ -33,8 +33,9 @@ async function scrapeNaukri(roles, locations, lookbackHours) {
   return allJobs;
 }
 
-async function fetchNaukriJobs(searchTerm, lookbackHours, seen) {
+async function fetchNaukriJobs(searchTerm, locations, lookbackHours, seen) {
   const jobs = [];
+  const locationQuery = buildLocationQuery(locations);
 
   // Naukri public search API
   const url = `https://www.naukri.com/jobapi/v3/search`;
@@ -43,10 +44,10 @@ async function fetchNaukriJobs(searchTerm, lookbackHours, seen) {
     urlType: "search_by_keyword",
     searchType: "adv",
     keyword: searchTerm,
-    location: "delhi ncr, gurugram, noida, remote",
+    location: locationQuery,
     experience: "0,3",
     k: searchTerm,
-    l: "delhi-ncr",
+    l: locationQuery.split(",")[0].trim().replace(/\s+/g, "-"),
     sort: "1", // sort by date
     industries: "",
     functionAreaIdGid: "",
@@ -115,6 +116,16 @@ async function fetchNaukriJobs(searchTerm, lookbackHours, seen) {
   }
 
   return jobs;
+}
+
+function buildLocationQuery(locations = []) {
+  const normalized = locations
+    .map((location) => String(location || "").trim())
+    .filter(Boolean)
+    .map((location) => location.toLowerCase() === "remote" ? "remote india" : location.toLowerCase());
+
+  const unique = [...new Set(normalized)];
+  return unique.length ? unique.join(", ") : "delhi ncr";
 }
 
 function isRecentNaukriJob(job) {

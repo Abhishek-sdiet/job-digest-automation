@@ -25,8 +25,41 @@ module.exports = {
       "React Developer",
     ],
 
-    // Location filters
+    // Location filters. Scrapers and the final relevance filter both use this.
     locations: ["Remote", "Gurugram", "Gurgaon", "Delhi", "Noida", "Delhi NCR"],
+
+    // Keep only jobs in the configured region, plus India-friendly remote roles.
+    strictLocationFilter: true,
+
+    // Extra words that count as your target region when a job board uses variants.
+    locationAliases: {
+      Remote: ["remote", "work from home", "wfh", "anywhere in india", "remote india"],
+      Gurugram: ["gurugram", "gurgaon"],
+      Gurgaon: ["gurgaon", "gurugram"],
+      Delhi: ["delhi", "new delhi"],
+      Noida: ["noida", "greater noida"],
+      "Delhi NCR": ["delhi ncr", "ncr", "national capital region"],
+    },
+
+    // If one of these appears in a location, reject it even when it also says remote.
+    excludedLocationTerms: [
+      "united states",
+      "usa",
+      "us",
+      "canada",
+      "uk",
+      "united kingdom",
+      "europe",
+      "australia",
+      "singapore",
+      "dubai",
+      "uae",
+      "germany",
+      "france",
+      "netherlands",
+      "worldwide",
+      "global",
+    ],
 
     // Keywords that MUST appear (OR logic — any match counts)
     mustHaveKeywords: [

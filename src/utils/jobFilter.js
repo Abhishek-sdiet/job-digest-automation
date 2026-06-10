@@ -22,6 +22,8 @@ function filterJobs(jobs) {
   for (const job of jobs) {
     const searchText = `${job.title} ${job.company} ${job.location}`.toLowerCase();
 
+    if (!isAllowedLocation(job.location)) continue;
+
     // 1. Skip if excluded keyword found
     const isExcluded = excludeKeywords.some((kw) => searchText.includes(kw.toLowerCase()));
     if (isExcluded) continue;
@@ -49,6 +51,41 @@ function filterJobs(jobs) {
   return filtered.slice(0, config.search.maxJobsPerEmail);
 }
 
+function normalize(text) {
+  return (text || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function termMatchesLocation(location, term) {
+  const normalizedLocation = normalize(location);
+  const normalizedTerm = normalize(term);
+  if (!normalizedLocation || !normalizedTerm) return false;
+  return new RegExp(`(^|\\s)${escapeRegExp(normalizedTerm)}(\\s|$)`).test(normalizedLocation);
+}
+
+function isAllowedLocation(location) {
+  if (!config.search.strictLocationFilter) return true;
+
+  const text = normalize(location);
+  if (!text) return false;
+
+  const excludedTerms = config.search.excludedLocationTerms || [];
+  if (excludedTerms.some((term) => termMatchesLocation(text, term))) return false;
+
+  const allowedTerms = new Set(config.search.locations || []);
+  const aliases = config.search.locationAliases || {};
+  for (const [locationName, terms] of Object.entries(aliases)) {
+    if (allowedTerms.has(locationName)) {
+      for (const term of terms) allowedTerms.add(term);
+    }
+  }
+
+  return [...allowedTerms].some((term) => termMatchesLocation(text, term));
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function recencyScore(postedDate) {
   const d = (postedDate || "").toLowerCase();
   if (d.includes("just now") || d.includes("minutes")) return 1000;
@@ -71,4 +108,4 @@ function groupBySource(jobs) {
   return groups;
 }
 
-module.exports = { filterJobs, groupBySource };
+module.exports = { filterJobs, groupBySource, isAllowedLocation };

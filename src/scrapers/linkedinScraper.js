@@ -10,7 +10,7 @@ const { cleanText, buildJobId } = require("../utils/helpers");
 
 const BASE_URL = "https://www.linkedin.com";
 
-async function scrapeLinkedIn(roles, lookbackHours) {
+async function scrapeLinkedIn(roles, locations, lookbackHours) {
   const allJobs = [];
   const seen = new Set();
 
@@ -24,13 +24,10 @@ async function scrapeLinkedIn(roles, lookbackHours) {
     "junior software engineer",
   ];
 
-  const locationCodes = [
-    { name: "Delhi NCR", geoId: "102713980" },
-    { name: "Remote", geoId: "" },
-  ];
+  const linkedinLocations = buildLinkedInLocations(locations);
 
   for (const term of searchTerms.slice(0, 4)) {
-    for (const loc of locationCodes) {
+    for (const loc of linkedinLocations) {
       try {
         const jobs = await fetchLinkedInJobs(term, loc, seen);
         allJobs.push(...jobs);
@@ -50,7 +47,7 @@ async function fetchLinkedInJobs(keyword, location, seen) {
   // LinkedIn public job search (no auth)
   const params = new URLSearchParams({
     keywords: keyword,
-    location: location.name,
+    location: location.searchLocation,
     f_TPR: "r86400", // last 24 hours
     f_E: "1,2",      // entry level + associate
     sortBy: "DD",    // date descending
@@ -60,6 +57,9 @@ async function fetchLinkedInJobs(keyword, location, seen) {
 
   if (location.geoId) {
     params.append("geoId", location.geoId);
+  }
+  if (location.workplaceType) {
+    params.append("f_WT", location.workplaceType);
   }
 
   const url = `${BASE_URL}/jobs-guest/jobs/api/seeMoreJobPostings/search?${params}`;
@@ -96,7 +96,7 @@ async function fetchLinkedInJobs(keyword, location, seen) {
         id: jobId,
         title,
         company,
-        location: locationText || location.name,
+        location: locationText || location.label,
         postedDate: formatLinkedInDate(timeAgo),
         applyLink: applyLink.split("?")[0], // clean tracking params
         source: "LinkedIn",
@@ -108,6 +108,37 @@ async function fetchLinkedInJobs(keyword, location, seen) {
   });
 
   return jobs;
+}
+
+function buildLinkedInLocations(locations = []) {
+  const unique = [];
+  const seen = new Set();
+
+  for (const rawLocation of locations) {
+    const location = String(rawLocation || "").trim();
+    if (!location) continue;
+
+    const key = location.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    if (key === "remote") {
+      unique.push({
+        label: "Remote India",
+        searchLocation: "India",
+        geoId: "102713980",
+        workplaceType: "2",
+      });
+      continue;
+    }
+
+    unique.push({
+      label: location,
+      searchLocation: location,
+    });
+  }
+
+  return unique.length ? unique.slice(0, 5) : [{ label: "Delhi NCR", searchLocation: "Delhi NCR" }];
 }
 
 function isWithin24Hours(datetime) {

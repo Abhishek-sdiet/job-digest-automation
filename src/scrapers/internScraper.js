@@ -10,7 +10,7 @@ const { cleanText, buildJobId } = require("../utils/helpers");
 
 const BASE_URL = "https://internshala.com";
 
-async function scrapeInternshala(lookbackHours) {
+async function scrapeInternshala(locations, lookbackHours) {
   const allJobs = [];
   const seen = new Set();
 

@@ -33,7 +33,7 @@ async function runJobDigest() {
 
   const scraperResults = await Promise.allSettled([
     runScraper("LinkedIn", () =>
-      scrapeLinkedIn(config.search.roles, config.search.lookbackHours)
+      scrapeLinkedIn(config.search.roles, config.search.locations, config.search.lookbackHours)
     ),
     runScraper("Indeed India", () =>
       scrapeIndeed(config.search.roles, config.search.locations, config.search.lookbackHours)
@@ -42,7 +42,7 @@ async function runJobDigest() {
       scrapeNaukri(config.search.roles, config.search.locations, config.search.lookbackHours)
     ),
     runScraper("Internshala", () =>
-      scrapeInternshala(config.search.lookbackHours)
+      scrapeInternshala(config.search.locations, config.search.lookbackHours)
     ),
     runScraper("Dream Companies", () =>
       scrapeCompanyCareers(config.dreamCompanies)
@@ -60,10 +60,12 @@ async function runJobDigest() {
   // ─── Step 2: Filter by relevance ────────────────────────────────
   const filtered = filterJobs(allJobs);
   console.log(`🔍 After relevance filter: ${filtered.length} jobs`);
+  logSourceCounts("Filtered source mix", filtered);
 
   // ─── Step 3: Remove duplicates seen in last 7 days ───────────────
   const freshJobs = filterNewJobs(filtered);
   console.log(`🆕 After deduplication: ${freshJobs.length} new jobs`);
+  logSourceCounts("Fresh source mix", freshJobs);
 
   // ─── Step 4: Backup to Google Sheets ────────────────────────────
   if (freshJobs.length > 0) {
@@ -77,8 +79,9 @@ async function runJobDigest() {
   const subject = buildEmailSubject(freshJobs);
 
   try {
-    await sendDigestEmail(subject, html, config.candidate.email);
-    console.log(`\n🎉 Digest sent to ${config.candidate.email} with ${freshJobs.length} jobs!`);
+    const recipientEmail = process.env.DIGEST_TO_EMAIL || config.candidate.email;
+    await sendDigestEmail(subject, html, recipientEmail);
+    console.log(`\n🎉 Digest sent to ${recipientEmail} with ${freshJobs.length} jobs!`);
   } catch (emailErr) {
     console.error("\n❌ Failed to send email:", emailErr.message);
     console.log("💡 Check your GMAIL_USER and GMAIL_APP_PASSWORD in .env");
@@ -100,6 +103,17 @@ async function runScraper(name, fn) {
     console.error(`  ✗  ${name} failed: ${err.message}`);
     return [];
   }
+}
+
+function logSourceCounts(label, jobs) {
+  const counts = jobs.reduce((acc, job) => {
+    acc[job.source] = (acc[job.source] || 0) + 1;
+    return acc;
+  }, {});
+  const summary = Object.entries(counts)
+    .map(([source, count]) => `${source}: ${count}`)
+    .join(", ");
+  console.log(`📌 ${label}: ${summary || "none"}`);
 }
 
 // Run it!

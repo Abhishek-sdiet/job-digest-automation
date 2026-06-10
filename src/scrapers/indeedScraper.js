@@ -13,8 +13,10 @@ async function scrapeIndeed(roles, locations, lookbackHours) {
   const allJobs = [];
   const seen = new Set();
 
+  const searchLocations = normalizeLocations(locations);
+
   for (const role of roles.slice(0, 5)) { // limit to top 5 roles to avoid rate limiting
-    for (const location of ["Delhi NCR", "Remote", "Gurugram", "Noida"]) {
+    for (const location of searchLocations) {
       try {
         const jobs = await fetchIndeedJobs(role, location, lookbackHours, seen);
         allJobs.push(...jobs);
@@ -26,6 +28,24 @@ async function scrapeIndeed(roles, locations, lookbackHours) {
   }
 
   return allJobs;
+}
+
+function normalizeLocations(locations = []) {
+  const unique = [];
+  const seen = new Set();
+
+  for (const rawLocation of locations) {
+    const location = String(rawLocation || "").trim();
+    if (!location) continue;
+
+    const searchLocation = location.toLowerCase() === "remote" ? "Remote India" : location;
+    const key = searchLocation.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(searchLocation);
+  }
+
+  return unique.length ? unique : ["Delhi NCR"];
 }
 
 async function fetchIndeedJobs(role, location, lookbackHours, seen) {
