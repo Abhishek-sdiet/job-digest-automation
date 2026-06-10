@@ -5,6 +5,7 @@
 // =====================================================
 
 const config = require("../../config/jobConfig");
+const { isWithinLookback } = require("./helpers");
 
 /**
  * Main filter pipeline:
@@ -23,6 +24,7 @@ function filterJobs(jobs) {
     const searchText = `${job.title} ${job.company} ${job.location}`.toLowerCase();
 
     if (!isAllowedLocation(job.location)) continue;
+    if (!isFreshEnough(job.postedDate)) continue;
 
     // 1. Skip if excluded keyword found
     const isExcluded = excludeKeywords.some((kw) => searchText.includes(kw.toLowerCase()));
@@ -71,10 +73,13 @@ function isAllowedLocation(location) {
   const excludedTerms = config.search.excludedLocationTerms || [];
   if (excludedTerms.some((term) => termMatchesLocation(text, term))) return false;
 
-  const allowedTerms = new Set(config.search.locations || []);
+  const configuredLocations = new Set(config.search.locations || []);
+  const allowedTerms = new Set(
+    [...configuredLocations].filter((location) => normalize(location) !== "remote")
+  );
   const aliases = config.search.locationAliases || {};
   for (const [locationName, terms] of Object.entries(aliases)) {
-    if (allowedTerms.has(locationName)) {
+    if (configuredLocations.has(locationName)) {
       for (const term of terms) allowedTerms.add(term);
     }
   }
@@ -84,6 +89,12 @@ function isAllowedLocation(location) {
 
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isFreshEnough(postedDate) {
+  const text = (postedDate || "").toLowerCase();
+  if (!text || text.includes("recently")) return true;
+  return isWithinLookback(text, config.search.lookbackHours);
 }
 
 function recencyScore(postedDate) {
@@ -108,4 +119,4 @@ function groupBySource(jobs) {
   return groups;
 }
 
-module.exports = { filterJobs, groupBySource, isAllowedLocation };
+module.exports = { filterJobs, groupBySource, isAllowedLocation, isFreshEnough };

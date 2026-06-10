@@ -5,6 +5,7 @@
 // ============================================
 
 const axios = require("axios");
+const fs = require("fs");
 const { cleanText, buildJobId } = require("../utils/helpers");
 
 async function scrapeNaukri(roles, locations, lookbackHours) {
@@ -28,6 +29,11 @@ async function scrapeNaukri(roles, locations, lookbackHours) {
     } catch (err) {
       console.error(`[Naukri] Error for "${term}":`, err.message);
     }
+  }
+
+  if (allJobs.length === 0) {
+    const browserJobs = await scrapeNaukriWithBrowser(searchTerms.slice(0, 4), locations, lookbackHours, seen);
+    allJobs.push(...browserJobs);
   }
 
   return allJobs;
@@ -118,6 +124,112 @@ async function fetchNaukriJobs(searchTerm, locations, lookbackHours, seen) {
   return jobs;
 }
 
+async function scrapeNaukriWithBrowser(searchTerms, locations, lookbackHours, seen) {
+  const allJobs = [];
+  let browser = null;
+
+  try {
+    const { chromium } = require("playwright");
+    browser = await chromium.launch(getBrowserLaunchOptions());
+    const page = await browser.newPage({
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    });
+
+    for (const searchTerm of searchTerms) {
+      try {
+        const url = buildNaukriSearchUrl(searchTerm, locations);
+        await page.goto(url, { waitUntil: "networkidle", timeout: 60000 });
+        const jobs = await extractRenderedNaukriJobs(page, seen, lookbackHours);
+        allJobs.push(...jobs);
+        await sleep(1500);
+      } catch (err) {
+        console.error(`[Naukri] Browser fallback failed for "${searchTerm}": ${err.message}`);
+      }
+    }
+  } catch (err) {
+    console.error(`[Naukri] Browser fallback unavailable: ${err.message}`);
+  } finally {
+    if (browser) await browser.close();
+  }
+
+  return allJobs;
+}
+
+function getBrowserLaunchOptions() {
+  const edgePath = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+  const options = { headless: true, args: ["--no-sandbox"] };
+  if (fs.existsSync(edgePath)) options.executablePath = edgePath;
+  return options;
+}
+
+function buildNaukriSearchUrl(searchTerm, locations = []) {
+  const locationSlug = buildPrimaryLocationSlug(locations);
+  const keywordSlug = searchTerm.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const params = new URLSearchParams({
+    k: searchTerm,
+    l: locationSlug.replace(/-/g, " "),
+    experience: "0",
+    jobAge: "1",
+    sort: "dd",
+  });
+  return `https://www.naukri.com/${keywordSlug}-jobs-in-${locationSlug}?${params}`;
+}
+
+function buildPrimaryLocationSlug(locations = []) {
+  const preferred = locations.find((location) => {
+    const normalized = String(location || "").toLowerCase();
+    return normalized.includes("delhi") || normalized.includes("ncr");
+  }) || locations.find((location) => String(location || "").toLowerCase() !== "remote") || "delhi ncr";
+
+  return String(preferred).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+async function extractRenderedNaukriJobs(page, seen, lookbackHours) {
+  const renderedJobs = await page.$$eval(".srp-jobtuple-wrapper", (cards) =>
+    cards.map((card) => {
+      const text = (selector) => card.querySelector(selector)?.textContent?.trim() || "";
+      const titleEl = card.querySelector("a.title");
+      const lines = (card.innerText || "").split("\n").map((line) => line.trim()).filter(Boolean);
+      const postedDate = text(".job-post-day") || lines.find((line) => /today|few hours|hour|day|week|month/i.test(line)) || "";
+      return {
+        title: titleEl?.getAttribute("title") || titleEl?.textContent?.trim() || "",
+        company: text(".comp-name"),
+        location: text(".locWdth"),
+        postedDate,
+        applyLink: titleEl?.href || "",
+      };
+    })
+  );
+
+  const jobs = [];
+  for (const job of renderedJobs) {
+    const title = cleanText(job.title);
+    const company = cleanText(job.company);
+    const location = cleanText(job.location);
+    const postedDate = cleanText(job.postedDate);
+
+    if (!title || !company || !job.applyLink) continue;
+    if (!isRecentNaukriLabel(postedDate, lookbackHours)) continue;
+
+    const jobId = buildJobId("naukri", title, company);
+    if (seen.has(jobId)) continue;
+    seen.add(jobId);
+
+    jobs.push({
+      id: jobId,
+      title,
+      company,
+      location,
+      postedDate: postedDate || "Recently",
+      applyLink: job.applyLink,
+      source: "Naukri.com",
+      sourceIcon: "ðŸŸ ",
+    });
+  }
+
+  return jobs;
+}
+
 function buildLocationQuery(locations = []) {
   const normalized = locations
     .map((location) => String(location || "").trim())
@@ -142,6 +254,18 @@ function isRecentNaukriJob(job) {
     if (label.includes("1 day") || label.includes("yesterday")) return true;
   } catch (e) {}
   return true; // if we can't determine, include it
+}
+
+function isRecentNaukriLabel(label, lookbackHours = 24) {
+  const lower = (label || "").toLowerCase();
+  if (!lower) return false;
+  if (lower.includes("just now") || lower.includes("today") || lower.includes("few hours")) return true;
+  const hours = lower.match(/(\d+)\s*\+?\s*hours?/);
+  if (hours) return Number(hours[1]) <= lookbackHours;
+  const days = lower.match(/(\d+)\s*\+?\s*days?/);
+  if (days) return Number(days[1]) <= Math.ceil(lookbackHours / 24);
+  if (lower.includes("1 day") || lower.includes("yesterday")) return lookbackHours >= 24;
+  return false;
 }
 
 function parseNaukriDate(job) {

@@ -58,12 +58,14 @@ async function fetchInternshalaListings(search, seen) {
 
   cards.each((_, el) => {
     try {
-      const titleEl = $(el).find(".job-title, .profile, h3 a").first();
+      const titleEl = $(el).find(".job-title-href, .job-title, .profile, h3 a").first();
       const title = cleanText(titleEl.text());
-      const company = cleanText($(el).find(".company_name, .company-name").text());
-      const location = cleanText($(el).find(".locations span, .location_link").text()) || "Remote / Delhi NCR";
+      const company = cleanText(
+        $(el).find(".company-name a, .company_name a, .company-name, .company_name").first().text()
+      ).replace(/\s+Actively hiring.*$/i, "");
+      const location = cleanText($(el).find(".locations span, .location_link").text());
       const postedDate = cleanText($(el).find(".status-inactive, .posted_by_time_mobile").text()) || "Recently";
-      const linkPath = $(el).find("a.job-title, a.profile").first().attr("href") ||
+      const linkPath = $(el).find("a.job-title-href, a.job-title, a.profile").first().attr("href") ||
                        $(el).closest("a").attr("href");
       const applyLink = linkPath
         ? linkPath.startsWith("http") ? linkPath : `${BASE_URL}${linkPath}`
